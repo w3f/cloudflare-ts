@@ -3,7 +3,7 @@ import { Logger } from '@w3f/logger';
 
 import { CredentialsData } from './types';
 
-const waitTime = 4000;
+const waitTime = 5000;
 
 export class Client {
     private cf: cf;
