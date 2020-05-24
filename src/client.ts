@@ -30,7 +30,8 @@ export class Client {
                 dnsRecords = await this.getDNSRecords(zoneID, record);
             } catch (e) {
                 this.logger.error(`Could not fetch zoneID: ${e}`);
-                process.exit(-1);
+                await this.delay(waitTime);
+                continue;
             }
             if (dnsRecords.length == 0) {
                 continueDeletion = false;
@@ -44,7 +45,8 @@ export class Client {
                 await this.deleteDNSRecords(zoneID, dnsRecords);
             } catch (e) {
                 this.logger.error(`Could not delete dns records: ${e}`);
-                process.exit(-1);
+                await this.delay(waitTime);
+                continue;
             }
         }
     }
