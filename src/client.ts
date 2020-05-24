@@ -13,14 +13,6 @@ export class Client {
     }
 
     async deleteDNSEntry(zone: string, record: string): Promise<void> {
-        const recordTypes = ['A', 'CNAME', 'TXT'];
-
-        for (let i = 0; i < recordTypes.length; i++) {
-            await this.deleteDNSEntryType(zone, record, recordTypes[i]);
-        }
-    }
-
-    private async deleteDNSEntryType(zone: string, record: string, recordType = 'TXT'): Promise<void> {
         let zoneID: string;
         try {
             zoneID = await this.getZoneID(zone);
@@ -30,6 +22,14 @@ export class Client {
         }
         this.logger.info(`zone id for ${zone} is ${zoneID}`);
 
+        const recordTypes = ['A', 'CNAME', 'TXT'];
+
+        for (let i = 0; i < recordTypes.length; i++) {
+            await this.deleteDNSEntryType(zoneID, record, recordTypes[i]);
+        }
+    }
+
+    private async deleteDNSEntryType(zoneID: string, record: string, recordType = 'TXT'): Promise<void> {
         let dnsRecords: Array<Object>;
 
         let continueDeletion = true;
@@ -45,6 +45,7 @@ export class Client {
                 }
             }
             if (dnsRecords.length == 0) {
+                this.logger.info(`Not found any ${recordType} records.`);
                 continueDeletion = false;
                 break;
             }
