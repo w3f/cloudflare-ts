@@ -13,6 +13,14 @@ export class Client {
     }
 
     async deleteDNSEntry(zone: string, record: string): Promise<void> {
+        const recordTypes = ['A', 'CNAME', 'TXT'];
+
+        for (let i = 0; i < recordTypes.length; i++) {
+            await this.deleteDNSEntryType(zone, record, recordTypes[i]);
+        }
+    }
+
+    private async deleteDNSEntryType(zone: string, record: string, recordType = 'TXT'): Promise<void> {
         let zoneID: string;
         try {
             zoneID = await this.getZoneID(zone);
@@ -27,27 +35,24 @@ export class Client {
         let continueDeletion = true;
         while (continueDeletion) {
             try {
-                dnsRecords = await this.getDNSRecords(zoneID, record);
+                dnsRecords = await this.getDNSRecords(zoneID, record, recordType);
             } catch (e) {
-                this.logger.error(`Could not fetch zoneID: ${e}`);
-                await this.delay(waitTime);
-                continue;
+                this.logger.error(`Could not get ${recordType} records list: ${e}`);
+
+                if (this.isTooManyRequestsError(e)) {
+                    await this.delay(waitTime);
+                    continue;
+                }
             }
             if (dnsRecords.length == 0) {
                 continueDeletion = false;
                 break;
             }
-            this.logger.info(`Found these records: ${JSON.stringify(dnsRecords)}`);
+            this.logger.info(`Found these ${recordType} records: ${JSON.stringify(dnsRecords)}`);
 
             await this.delay(waitTime);
 
-            try {
-                await this.deleteDNSRecords(zoneID, dnsRecords);
-            } catch (e) {
-                this.logger.error(`Could not delete dns records: ${e}`);
-                await this.delay(waitTime);
-                continue;
-            }
+            await this.deleteDNSRecords(zoneID, dnsRecords, recordType);
         }
     }
 
@@ -64,28 +69,45 @@ export class Client {
         throw new Error(`Could not find zone with name ${target}`);
     }
 
-    private async getDNSRecords(zoneID: string, target: string): Promise<Array<Object>> {
-        const records = await this.cf.dnsRecords.browse(zoneID);
+    private async getDNSRecords(zoneID: string, target: string, recordType: string): Promise<Array<Object>> {
+        const options = {
+            type: recordType,
+            per_page: 100
+        };
+        const records = await this.cf.dnsRecords.browse(zoneID, options);
 
         const results = records.result.filter((item) => item.name.includes(target));
 
         const output: Array<Object> = [];
-        results.forEach((result) => output.push({ id: result.id, name: result.name }));
+        if (results.length) {
+            results.forEach((result) => output.push({ id: result.id, name: result.name }));
+        }
 
         await this.delay(waitTime);
         return output;
     }
 
-    private async deleteDNSRecords(zoneID: string, dnsRecords: Array<any>): Promise<void> {
+    private async deleteDNSRecords(zoneID: string, dnsRecords: Array<any>, recordType: string): Promise<void> {
         for (let i = 0; i < dnsRecords.length; i++) {
-            this.logger.info(`Deleting record with name ${dnsRecords[i].name}`);
-            await this.cf.dnsRecords.del(zoneID, dnsRecords[i].id);
-
+            this.logger.info(`Deleting ${recordType} record with name ${dnsRecords[i].name}`);
+            try {
+                await this.cf.dnsRecords.del(zoneID, dnsRecords[i].id);
+            } catch (e) {
+                this.logger.error(`Could not delete dns record: ${e}`);
+                if (this.isTooManyRequestsError(e)) {
+                    await this.delay(waitTime);
+                    continue;
+                }
+            }
             await this.delay(waitTime);
         }
     }
 
     private delay(ms: number) {
         return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    private isTooManyRequestsError(e): boolean {
+        return e.statusCode === 429 && e.statusMessage === 'Too Many Requests';
     }
 }
